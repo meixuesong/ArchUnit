@@ -27,13 +27,15 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableSet;
-import com.tngtech.archunit.base.ArchUnitException.ReflectionException;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.core.importer.ImportOptions;
 import com.tngtech.archunit.core.importer.Location;
 import com.tngtech.archunit.core.importer.Locations;
+
+import static com.google.common.base.Preconditions.checkNotNull;
+import static com.tngtech.archunit.junit.ReflectionUtils.newInstanceOf;
 
 class ClassCache {
     @VisibleForTesting
@@ -48,40 +50,40 @@ class ClassCache {
 
     private CacheClassFileImporter cacheClassFileImporter = new CacheClassFileImporter();
 
-    JavaClasses getClassesToAnalyzeFor(Class<?> testClass) {
-        checkArgument(testClass);
+    JavaClasses getClassesToAnalyzeFor(Class<?> testClass, ClassAnalysisRequest classAnalysisRequest) {
+        checkNotNull(testClass);
+        checkNotNull(classAnalysisRequest);
 
         if (cachedByTest.containsKey(testClass)) {
             return cachedByTest.get(testClass);
         }
 
-        LocationsKey locations = locationsToImport(testClass);
+        LocationsKey locations = locationsToImport(testClass, classAnalysisRequest);
         JavaClasses classes = cachedByLocations.getUnchecked(locations).get();
         cachedByTest.put(testClass, classes);
         return classes;
     }
 
-    private LocationsKey locationsToImport(Class<?> testClass) {
-        AnalyzeClasses analyzeClasses = testClass.getAnnotation(AnalyzeClasses.class);
+    private LocationsKey locationsToImport(Class<?> testClass, ClassAnalysisRequest classAnalysisRequest) {
         Set<Location> declaredLocations = ImmutableSet.<Location>builder()
-                .addAll(getLocationsOfPackages(analyzeClasses))
-                .addAll(getLocationsOfProviders(testClass, analyzeClasses))
+                .addAll(getLocationsOfPackages(classAnalysisRequest))
+                .addAll(getLocationsOfProviders(testClass, classAnalysisRequest))
                 .build();
         Set<Location> locations = declaredLocations.isEmpty() ? Locations.inClassPath() : declaredLocations;
-        return new LocationsKey(analyzeClasses.importOptions(), locations);
+        return new LocationsKey(classAnalysisRequest.getImportOptions(), locations);
     }
 
-    private Set<Location> getLocationsOfPackages(AnalyzeClasses analyzeClasses) {
+    private Set<Location> getLocationsOfPackages(ClassAnalysisRequest analyzeClasses) {
         Set<String> packages = ImmutableSet.<String>builder()
-                .add(analyzeClasses.packages())
-                .addAll(toPackageStrings(analyzeClasses.packagesOf()))
+                .add(analyzeClasses.getPackages())
+                .addAll(toPackageStrings(analyzeClasses.getPackageRoots()))
                 .build();
         return locationsOf(packages);
     }
 
-    private Set<Location> getLocationsOfProviders(Class<?> testClass, AnalyzeClasses analyzeClasses) {
+    private Set<Location> getLocationsOfProviders(Class<?> testClass, ClassAnalysisRequest analyzeClasses) {
         Set<Location> result = new HashSet<>();
-        for (Class<? extends LocationProvider> providerClass : analyzeClasses.locations()) {
+        for (Class<? extends LocationProvider> providerClass : analyzeClasses.getLocationProviders()) {
             result.addAll(tryCreate(providerClass).get(testClass));
         }
         return result;
@@ -112,21 +114,6 @@ class ClassCache {
             result.addAll(Locations.ofPackage(pkg));
         }
         return result;
-    }
-
-    private static <T> T newInstanceOf(Class<T> type) {
-        try {
-            return type.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new ReflectionException(e);
-        }
-    }
-
-    private void checkArgument(Class<?> testClass) {
-        if (testClass.getAnnotation(AnalyzeClasses.class) == null) {
-            throw new IllegalArgumentException(String.format("Class %s must be annotated with @%s",
-                    testClass.getSimpleName(), AnalyzeClasses.class.getSimpleName()));
-        }
     }
 
     void clear(Class<?> testClass) {
