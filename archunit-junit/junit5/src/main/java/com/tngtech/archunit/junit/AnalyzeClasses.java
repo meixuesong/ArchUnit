@@ -23,18 +23,18 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.core.importer.ImportOption.DontIncludeJars;
 import com.tngtech.archunit.core.importer.ImportOption.DontIncludeTests;
 import com.tngtech.archunit.core.importer.ImportOptions;
+import org.junit.platform.commons.annotation.Testable;
 
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 /**
- * Specifies which packages/locations should be scanned and tested when running a test with the {@link ArchUnitRunner}.
+ * Specifies which packages/locations should be scanned and tested when running a JUnit 5 test.
  * <br><br>
  * To ignore certain classes (e.g. classes in test scope) see {@link #importOptions()}, in particular {@link DontIncludeTests} and
  * {@link DontIncludeJars}.
- *
- * @see ArchUnitRunner
  */
+@Testable
 @Target(TYPE)
 @Retention(RUNTIME)
 public @interface AnalyzeClasses {
